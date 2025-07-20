@@ -49,7 +49,7 @@ project-root/
 
 ---
 
-## 🧪 How to Run Locally
+## 🧪 How to Run Locally OR Deployed to Live Hosting
 
 ### 1. Clone the Repository
 ```bash
