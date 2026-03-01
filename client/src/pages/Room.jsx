@@ -5,7 +5,8 @@ import { useParams } from 'react-router-dom';
 import { Pencil, Paintbrush, Trash2, ZoomIn, ZoomOut, Maximize2, Save } from 'lucide-react';
 import { FaMousePointer } from 'react-icons/fa';
 
-const socket = io('http://localhost:5000');
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+const socket = io(API_URL);
 
 const COLORS = ['black', 'red', 'blue', 'green', 'orange', 'purple', 'teal', 'brown'];
 
@@ -25,7 +26,7 @@ const Room = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showStrokeSlider, setShowStrokeSlider] = useState(false);
   const [showColorPalette, setShowColorPalette] = useState(false);
-  
+
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -36,6 +37,7 @@ const Room = () => {
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctxRef.current = ctx;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -53,7 +55,7 @@ const Room = () => {
     });
 
     socket.on('cursorMove', ({ userId, position, color }) => {
-      
+
       setUserColors(prev => ({
         ...prev,
         [userId]: color
@@ -87,6 +89,7 @@ const Room = () => {
     return () => {
       socket.off();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomId]);
 
   const drawStroke = (stroke, save = true) => {
@@ -147,6 +150,7 @@ const Room = () => {
       clearCanvas();
       history.forEach(stroke => drawStroke(stroke, false));
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const toggleFullscreen = () => {
