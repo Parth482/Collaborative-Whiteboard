@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
 function Home() {
   const [roomId, setRoomId] = useState('');
   const navigate = useNavigate();
@@ -10,9 +12,13 @@ function Home() {
     e.preventDefault();
     const trimmedRoomId = roomId.trim();
     if (!trimmedRoomId) return alert('Please enter a room ID.');
+    if (trimmedRoomId.length < 6 || trimmedRoomId.length > 8) {
+      return alert('Room ID must be between 6 and 8 characters.');
+    }
+
 
     try {
-      const res = await axios.get(`http://localhost:5000/api/rooms/${trimmedRoomId}`);
+      const res = await axios.get(`${API_URL}/api/rooms/${trimmedRoomId}`);
       if (res.data?.roomId === trimmedRoomId) {
         navigate(`/room/${trimmedRoomId}`);
       } else {
@@ -22,7 +28,7 @@ function Home() {
       const shouldCreate = window.confirm(`Room "${trimmedRoomId}" doesn't exist. Create it?`);
       if (shouldCreate) {
         try {
-          await axios.post('http://localhost:5000/api/rooms/join', { roomId: trimmedRoomId });
+          await axios.post(`${API_URL}/api/rooms/join`, { roomId: trimmedRoomId });
           navigate(`/room/${trimmedRoomId}`);
         } catch {
           alert('Error creating room.');
@@ -33,8 +39,12 @@ function Home() {
 
   const handleCreate = async () => {
     if (!roomId.trim()) return alert('Please enter a Room ID to create.');
+    if (roomId.trim().length < 6 || roomId.trim().length > 8) {
+      return alert('Room ID must be between 6 and 8 characters.');
+    }
+
     try {
-      await axios.post('http://localhost:5000/api/rooms/join', { roomId: roomId.trim() });
+      await axios.post(`${API_URL}/api/rooms/join`, { roomId: roomId.trim() });
       navigate(`/room/${roomId.trim()}`);
     } catch (err) {
       alert(err.response?.data?.message || 'Error creating room.');
@@ -180,6 +190,7 @@ const Typewriter = ({ messages = [] }) => {
       }
     }, 50);
     return () => clearTimeout(timeout);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [charIndex, msgIndex]);
 
   return <span>{text}</span>;
