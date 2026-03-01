@@ -5,7 +5,9 @@ const roomCanvases = {};
 const roomUsers = {};
 const userCursors = {};
 const userCursorTimers = {};
-const roomActivity = {}; 
+const lastCursorBroadcast = {};
+const roomActivity = {};
+const CURSOR_BROADCAST_THROTTLE = 30;
 
 function socketHandler(server) {
   const io = new Server(server, {
@@ -15,7 +17,7 @@ function socketHandler(server) {
     },
   });
 
-  
+
   setInterval(() => {
     const now = Date.now();
     const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
@@ -35,7 +37,7 @@ function socketHandler(server) {
         }
       }
     }
-  }, 60 * 60 * 1000); 
+  }, 60 * 60 * 1000);
 
   io.on('connection', (socket) => {
     console.log('🔌 Client connected:', socket.id);
@@ -91,6 +93,12 @@ function socketHandler(server) {
       const userInfo = userCursors[socket.id];
       if (!userInfo) return;
 
+      const now = Date.now();
+      if (lastCursorBroadcast[socket.id] && now - lastCursorBroadcast[socket.id] < CURSOR_BROADCAST_THROTTLE) {
+        return;
+      }
+      lastCursorBroadcast[socket.id] = now;
+
       roomActivity[roomId] = Date.now();
 
       io.to(roomId).emit('cursorMove', {
@@ -120,6 +128,7 @@ function socketHandler(server) {
         socket.to(roomId).emit('removeCursor', socket.id);
       }
       delete userCursors[socket.id];
+      delete lastCursorBroadcast[socket.id];
     });
   });
 }
