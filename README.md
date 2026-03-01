@@ -1,172 +1,161 @@
-# 🧑‍🤝‍🧑 Collaborative Whiteboard App
+# 🧑‍🤝‍🧑 Collaborative Whiteboard
 
-A real-time collaborative whiteboard built using the **MERN stack** with **Socket.io** support for live drawing and cursor tracking.
+A real-time collaborative whiteboard built using the **MERN stack** with **Socket.IO** for live drawing and cursor tracking. Fully responsive with mobile touch support.
 
 ---
 
 ## 🚀 Features
 
-- 🔒 Join or create rooms using simple alphanumeric codes (no login required)
-- ✏️ Smooth pencil tool with:
-  - Adjustable stroke width
-  - Color selection: Black, Red, Blue, Green
-- 🔁 Real-time drawing synchronization across all users
-- 👆 Real-time cursor tracking for connected users
-- 👥 Displays number of active users in each room
+- 🔒 Join or create rooms using alphanumeric codes (6–8 characters, no login required)
+- ✏️ Smooth drawing with adjustable stroke width and 8 color options
+- 📱 **Mobile optimized** — full touch support (`touchstart`, `touchmove`, `touchend`)
+- ⚡ **Performance optimized** — throttled cursor emissions (~30fps) on both client and server
+- 🔁 Real-time drawing sync across all connected users
+- 👆 Live cursor tracking with assigned user colors
+- 👥 Active user count displayed per room
 - 🗑️ Clear canvas for all users
-- 💾 Canvas data is stored persistently in MongoDB
+- 🔍 Zoom in/out and fullscreen support
+- 💾 Export canvas as PNG
+- 🧹 Automatic cleanup of inactive rooms (24h)
 
 ---
 
 ## 🧱 Tech Stack
 
-| Technology     | Usage                       |
-|----------------|-----------------------------|
-| React.js       | Frontend                    |
-| Node.js        | Backend                     |
-| Express.js     | API layer                   |
-| MongoDB        | Database                    |
-| Socket.io      | Real-time communication     |
-| HTML5 Canvas   | Drawing surface             |
+| Technology   | Usage                   |
+|--------------|-------------------------|
+| React.js     | Frontend                |
+| Node.js      | Backend                 |
+| Express.js   | API layer               |
+| MongoDB      | Database                |
+| Socket.IO    | Real-time communication |
+| HTML5 Canvas | Drawing surface         |
 
 ---
 
 ## 📁 Folder Structure
 
+```
 project-root/
-├── client/ # React frontend
-│ ├── src/
-│ ├── public/
-│ └── package.json
-├── server/ # Node.js backend
-│ ├── models/
-│ ├── routes/
-│ ├── socket/
-│ └── server.js
-├── README.md
-└── package.json
-
+├── client/                # React frontend
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Home.jsx   # Landing page
+│   │   │   └── Room.jsx   # Whiteboard canvas
+│   │   ├── App.js
+│   │   └── index.css
+│   └── package.json
+├── server/                # Node.js backend
+│   ├── models/
+│   ├── routes/
+│   ├── socket/
+│   │   └── socketHandler.js
+│   ├── server.js
+│   └── package.json
+└── README.md
+```
 
 ---
 
-## 🧪 How to Run Locally OR Deployed to Live Hosting
+## 🧪 Run Locally
 
 ### 1. Clone the Repository
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/Collaborative-Whiteboard.git
+git clone https://github.com/Parth482/Collaborative-Whiteboard.git
 cd Collaborative-Whiteboard
+```
 
-2. Start the Server
+### 2. Start the Server
 
-cd ../server
+```bash
+cd server
 npm install
 npm start
+```
 
-3. Start the Client
+### 3. Start the Client
 
-cd ../client
+```bash
+cd client
 npm install
 npm start
+```
 
-🧠 API & Socket Events
-REST Endpoints
-Method	   Endpoint	        Description
-POST	/api/rooms/join	Join or create a room
-GET	/api/rooms/:roomId	Fetch room information
+The client runs on `http://localhost:3000` and connects to the server at `http://localhost:5000` by default.
 
-Socket Events
-Event	Purpose
-join-room	Join a room
-leave-room	Leave a room
-cursor-move	Update cursor position
-draw-start	Start drawing a stroke
-draw-move	Continue drawing a stroke
-draw-end	Finish drawing a stroke
-clear-canvas	Clear the entire canvas
+---
 
-🧱 Database Schema
-Room Schema
-{
-  roomId: String,
-  createdAt: Date,
-  lastActivity: Date,
-  drawingData: Array
-}
-Drawing Command Schema
-{
-  type: String, // 'stroke' or 'clear'
-  data: Object, // path data, color, width, etc.
-  timestamp: Date
-}
+## 🔌 Environment Variables
 
-🚀 Deployment Guide
+### Client (`client/.env`)
 
-📦 Backend Deployment (Node.js + Socket.IO)
-We’ll use Render to host the Node.js server.
+| Variable               | Description                      | Default                  |
+|------------------------|----------------------------------|--------------------------|
+| `REACT_APP_API_URL`    | Backend server URL               | `http://localhost:5000`  |
 
-1. Create a new Web Service on Render
-Go to https://render.com
+### Server (`server/.env`)
 
-Click "New + > Web Service"
+| Variable    | Description              | Example                                      |
+|-------------|--------------------------|----------------------------------------------|
+| `MONGO_URI` | MongoDB connection string | `mongodb+srv://user:pass@cluster.mongodb.net` |
+| `PORT`      | Server port               | `5000`                                       |
 
-Connect your GitHub and select the server folder repo
+---
 
-Fill the settings:
+## 🧠 API & Socket Events
 
-Name: whiteboard-backend
+### REST Endpoints
 
-Runtime: Node
+| Method | Endpoint             | Description              |
+|--------|----------------------|--------------------------|
+| POST   | `/api/rooms/join`    | Join or create a room    |
+| GET    | `/api/rooms/:roomId` | Fetch room information   |
 
-Build Command: npm install
+### Socket Events
 
-Start Command: node index.js (or your entry file like server.js)
+| Event          | Direction       | Purpose                        |
+|----------------|-----------------|--------------------------------|
+| `joinRoom`     | Client → Server | Join a room                    |
+| `drawing`      | Bidirectional   | Send/receive stroke data       |
+| `cursorMove`   | Bidirectional   | Update cursor position         |
+| `syncCanvas`   | Server → Client | Sync full canvas history       |
+| `clearCanvas`  | Bidirectional   | Clear the entire canvas        |
+| `userCount`    | Server → Client | Update active user count       |
+| `removeCursor` | Server → Client | Remove disconnected user cursor|
+| `yourId`       | Server → Client | Send socket ID to client       |
+| `undo`         | Client → Server | Undo last stroke               |
+| `redo`         | Client → Server | Redo last undone stroke        |
 
-Set the environment variable:
+---
 
-PORT=10000 or leave it blank if dynamic
+## 🚀 Deployment
 
-Deploy
+### Backend → Render
 
-⚠️ Make sure to allow WebSocket connections. Render supports them by default.
+1. Go to [render.com](https://render.com) → **New + → Web Service**
+2. Connect your GitHub repo
+3. Configure:
+   - **Root Directory**: `server`
+   - **Build Command**: `npm install`
+   - **Start Command**: `npm start`
+4. Add environment variables: `MONGO_URI`
+5. Deploy — note the URL (e.g. `https://your-app.onrender.com`)
 
-2. Get the backend URL
-After deployment, note the https://your-backend-url.onrender.com — you’ll need this in the frontend.
+### Frontend → Vercel
 
+1. Go to [vercel.com](https://vercel.com) → **Import Project**
+2. Select your GitHub repo
+3. Configure:
+   - **Root Directory**: `client`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `build`
+4. Add environment variable:
+   - `REACT_APP_API_URL` = `https://your-app.onrender.com`
+5. Deploy
 
-🌐 Frontend Deployment (React App)
-You can deploy using Vercel or Netlify:
+---
 
-Option A: Vercel
-Go to https://vercel.com
+## 📄 License
 
-Import your GitHub repo
-
-Select the client folder as the project root
-
-Set build settings:
-
-Build Command: npm run build
-
-Output Directory: build
-
-Set Environment Variable:
-
-REACT_APP_BACKEND_URL=https://your-backend-url.onrender.com
-
-Deploy
-
-Option B: Netlify
-Go to https://netlify.com
-
-Drag & drop the client/build folder
-
-Or connect GitHub and configure:
-
-Build Command: npm run build
-
-Publish directory: build
-
-Add REACT_APP_BACKEND_URL as an environment variable
-
-Deploy
-
+MIT
