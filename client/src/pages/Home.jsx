@@ -57,7 +57,7 @@ function Home() {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '60px 20px',
+      padding: 'clamp(20px, 5vw, 60px) 16px',
       background: 'linear-gradient(to right, #eef2ff, #f9fafb)',
       fontFamily: 'Inter, sans-serif',
       overflowX: 'hidden',
@@ -66,29 +66,28 @@ function Home() {
       <div style={{
         display: 'flex',
         alignItems: 'stretch',
-        gap: '60px',
+        gap: 'clamp(24px, 4vw, 60px)',
         maxWidth: '1300px',
         width: '100%',
         flexWrap: 'wrap',
         justifyContent: 'center'
       }}>
-        {/* LEFT SIDE */}
         <div style={{
-          flex: '1 1 480px',
-          minWidth: '320px',
+          flex: '1 1 300px',
+          minWidth: '280px',
           maxWidth: '600px'
         }}>
           <h1 style={{
-            fontSize: '48px',
+            fontSize: 'clamp(28px, 5vw, 48px)',
             fontWeight: 800,
-            marginBottom: '24px',
+            marginBottom: 'clamp(12px, 2vw, 24px)',
             color: '#1f2937',
             textShadow: '1px 1px 0px #7c3aed',
             lineHeight: 1.2
           }}>
             Draw ideas,<br /> together!
           </h1>
-          <p style={{ fontSize: '18px', color: '#4b5563', marginBottom: '36px' }}>
+          <p style={{ fontSize: 'clamp(15px, 2vw, 18px)', color: '#4b5563', marginBottom: 'clamp(20px, 3vw, 36px)' }}>
             Join or create a real-time whiteboard room. No login needed.
           </p>
           <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -112,10 +111,9 @@ function Home() {
           </form>
         </div>
 
-        {/* RIGHT SIDE */}
         <div style={{
-          flex: '1 1 500px',
-          minWidth: '320px',
+          flex: '1 1 300px',
+          minWidth: '280px',
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center'
@@ -126,7 +124,7 @@ function Home() {
             background: '#fff',
             borderRadius: '24px',
             boxShadow: '0 25px 50px rgba(0,0,0,0.05)',
-            padding: '36px',
+            padding: 'clamp(20px, 3vw, 36px)',
             display: 'flex',
             flexDirection: 'column',
             gap: '20px',
