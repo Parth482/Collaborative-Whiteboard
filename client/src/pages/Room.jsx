@@ -1,5 +1,5 @@
 // Room.jsx
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import { useParams } from 'react-router-dom';
 import { Pencil, Paintbrush, Trash2, ZoomIn, ZoomOut, Maximize2, Save } from 'lucide-react';
@@ -9,13 +9,16 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const socket = io(API_URL);
 
 const COLORS = ['black', 'red', 'blue', 'green', 'orange', 'purple', 'teal', 'brown'];
+const CURSOR_THROTTLE_MS = 30;
+const IS_MOBILE = typeof window !== 'undefined' && window.innerWidth < 768;
 
 const Room = () => {
   const { roomId } = useParams();
   const canvasRef = useRef(null);
   const ctxRef = useRef(null);
   const drawing = useRef(false);
-  const stroke = useRef([]);
+  const strokeRef = useRef([]);
+  const lastCursorEmit = useRef(0);
   const [color, setColor] = useState('black');
   const [lineWidth, setLineWidth] = useState(2);
   const [userCount, setUserCount] = useState(1);
@@ -26,7 +29,23 @@ const Room = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showStrokeSlider, setShowStrokeSlider] = useState(false);
   const [showColorPalette, setShowColorPalette] = useState(false);
+  const [isMobile, setIsMobile] = useState(IS_MOBILE);
 
+  const resizeCanvas = useCallback(() => {
+    const canvas = canvasRef.current;
+    const ctx = ctxRef.current;
+    if (!canvas || !ctx) return;
+
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    ctx.lineCap = 'round';
+
+    ctx.putImageData(imageData, 0, 0);
+
+    setIsMobile(window.innerWidth < 768);
+  }, []);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -37,37 +56,48 @@ const Room = () => {
     ctx.strokeStyle = color;
     ctx.lineWidth = lineWidth;
     ctxRef.current = ctx;
+
+    window.addEventListener('resize', resizeCanvas);
+    return () => window.removeEventListener('resize', resizeCanvas);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resizeCanvas]);
+
+  const drawStroke = useCallback((strokeData, save = true) => {
+    const ctx = ctxRef.current;
+    if (!ctx || strokeData.points.length < 2) return;
+    ctx.strokeStyle = strokeData.color;
+    ctx.lineWidth = strokeData.lineWidth;
+    ctx.beginPath();
+    ctx.moveTo(strokeData.points[0].x, strokeData.points[0].y);
+    for (let i = 1; i < strokeData.points.length; i++) {
+      ctx.lineTo(strokeData.points[i].x, strokeData.points[i].y);
+    }
+    ctx.stroke();
+    ctx.closePath();
+    if (save) socket.emit('drawing', { roomId, data: strokeData });
+  }, [roomId]);
+
+  const clearCanvas = useCallback(() => {
+    const ctx = ctxRef.current;
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
   }, []);
 
   useEffect(() => {
     socket.emit('joinRoom', roomId);
 
-    socket.on('yourId', (id) => {
-      setMyId(id);
-    });
+    socket.on('yourId', (id) => setMyId(id));
 
     socket.on('drawing', (data) => drawStroke(data, false));
 
     socket.on('syncCanvas', (history) => {
       clearCanvas();
-      history.forEach(stroke => drawStroke(stroke, false));
+      history.forEach(s => drawStroke(s, false));
     });
 
-    socket.on('cursorMove', ({ userId, position, color }) => {
-
-      setUserColors(prev => ({
-        ...prev,
-        [userId]: color
-      }));
-
-      setCursors(prev => ({
-        ...prev,
-        [userId]: {
-          x: position.x,
-          y: position.y
-        }
-      }));
+    socket.on('cursorMove', ({ userId, position, color: cursorColor }) => {
+      setUserColors(prev => ({ ...prev, [userId]: cursorColor }));
+      setCursors(prev => ({ ...prev, [userId]: { x: position.x, y: position.y } }));
     });
 
     socket.on('removeCursor', (userId) => {
@@ -76,7 +106,6 @@ const Room = () => {
         delete updated[userId];
         return updated;
       });
-
       setUserColors(prev => {
         const updated = { ...prev };
         delete updated[userId];
@@ -86,42 +115,43 @@ const Room = () => {
 
     socket.on('userCount', (count) => setUserCount(count));
 
-    return () => {
-      socket.off();
-    };
+    return () => { socket.off(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roomId]);
+  }, [roomId, drawStroke, clearCanvas]);
 
-  const drawStroke = (stroke, save = true) => {
-    const ctx = ctxRef.current;
-    if (!ctx || stroke.points.length < 2) return;
-    ctx.strokeStyle = stroke.color;
-    ctx.lineWidth = stroke.lineWidth;
-    ctx.beginPath();
-    ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
-    for (let i = 1; i < stroke.points.length; i++) {
-      ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+  const getPoint = (e) => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    if (e.touches && e.touches.length > 0) {
+      return { x: (e.touches[0].clientX - rect.left) / scale, y: (e.touches[0].clientY - rect.top) / scale };
     }
-    ctx.stroke();
-    ctx.closePath();
-    if (save) socket.emit('drawing', { roomId, data: stroke });
+    return { x: (e.clientX - rect.left) / scale, y: (e.clientY - rect.top) / scale };
   };
 
-  const handleMouseDown = (e) => {
+  const emitCursorThrottled = (point) => {
+    const now = Date.now();
+    if (now - lastCursorEmit.current >= CURSOR_THROTTLE_MS) {
+      lastCursorEmit.current = now;
+      socket.emit('cursorMove', { roomId, position: point });
+    }
+  };
+
+  const handlePointerDown = (e) => {
+    if (e.touches) e.preventDefault();
     drawing.current = true;
-    const point = { x: e.clientX / scale, y: e.clientY / scale };
-    stroke.current = [point];
+    const point = getPoint(e);
+    strokeRef.current = [point];
   };
 
-  const handleMouseMove = (e) => {
-    const point = { x: e.clientX / scale, y: e.clientY / scale };
-    socket.emit('cursorMove', { roomId, position: point });
+  const handlePointerMove = (e) => {
+    if (e.touches) e.preventDefault();
+    const point = getPoint(e);
+    emitCursorThrottled(point);
 
     if (!drawing.current) return;
-    stroke.current.push(point);
-    if (stroke.current.length > 1) {
+    strokeRef.current.push(point);
+    if (strokeRef.current.length > 1) {
       const partialStroke = {
-        points: [stroke.current[stroke.current.length - 2], point],
+        points: [strokeRef.current[strokeRef.current.length - 2], point],
         color,
         lineWidth
       };
@@ -129,29 +159,17 @@ const Room = () => {
     }
   };
 
-  const handleMouseUp = () => {
+  const handlePointerUp = (e) => {
+    if (e && e.touches) e.preventDefault();
     if (!drawing.current) return;
     drawing.current = false;
-    stroke.current = [];
-  };
-
-  const clearCanvas = () => {
-    const ctx = ctxRef.current;
-    ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    strokeRef.current = [];
   };
 
   const handleClear = () => {
     clearCanvas();
     socket.emit('clearCanvas', roomId);
   };
-
-  useEffect(() => {
-    socket.on('syncCanvas', (history) => {
-      clearCanvas();
-      history.forEach(stroke => drawStroke(stroke, false));
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const toggleFullscreen = () => {
     const canvas = canvasRef.current;
@@ -168,47 +186,124 @@ const Room = () => {
     link.click();
   };
 
+  const toolbarStyle = isMobile
+    ? {
+      position: 'fixed', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+      display: 'flex', flexDirection: 'row', gap: 6,
+      background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+      padding: '8px 12px', borderRadius: 16,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+      zIndex: 100
+    }
+    : {
+      position: 'fixed', top: '50%', left: 10, transform: 'translateY(-50%)',
+      display: 'flex', flexDirection: 'column', gap: 10,
+      background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+      padding: 10, borderRadius: 12,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+      zIndex: 100
+    };
+
+  const toolBtnStyle = {
+    background: 'none', border: 'none', cursor: 'pointer',
+    padding: isMobile ? 10 : 6,
+    minWidth: isMobile ? 44 : 'auto',
+    minHeight: isMobile ? 44 : 'auto',
+    display: 'flex', alignItems: 'center', justifyContent: 'center'
+  };
+
+  const colorPaletteStyle = isMobile
+    ? {
+      position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
+      display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 6,
+      background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+      padding: 10, borderRadius: 12,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+      zIndex: 101
+    }
+    : {
+      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4
+    };
+
+  const strokeSliderStyle = isMobile
+    ? {
+      position: 'fixed', bottom: 72, left: '50%', transform: 'translateX(-50%)',
+      background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+      padding: '10px 16px', borderRadius: 12,
+      boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
+      zIndex: 101
+    }
+    : {};
+
   return (
-    <div>
+    <div style={{ overflow: 'hidden', width: '100vw', height: '100vh', position: 'relative' }}>
       <canvas
         ref={canvasRef}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        onMouseUp={handleMouseUp}
-        style={{ cursor: 'crosshair', transform: `scale(${scale})`, transformOrigin: '0 0' }}
+        onMouseDown={handlePointerDown}
+        onMouseMove={handlePointerMove}
+        onMouseUp={handlePointerUp}
+        onMouseLeave={handlePointerUp}
+        onTouchStart={handlePointerDown}
+        onTouchMove={handlePointerMove}
+        onTouchEnd={handlePointerUp}
+        onTouchCancel={handlePointerUp}
+        style={{
+          cursor: 'crosshair',
+          transform: `scale(${scale})`,
+          transformOrigin: '0 0',
+          touchAction: 'none',
+          display: 'block'
+        }}
       />
 
-      {/* Left Toolbar */}
-      <div style={{ position: 'fixed', top: '50%', left: 10, transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 10, background: '#f8f9fa', padding: 10, borderRadius: 8, boxShadow: '0 0 10px rgba(0,0,0,0.1)' }}>
-        <button style={{ background: 'none', border: 'none' }} onClick={() => setShowStrokeSlider(!showStrokeSlider)}><Pencil /></button>
-        {showStrokeSlider && <input type="range" min="1" max="10" value={lineWidth} onChange={(e) => setLineWidth(Number(e.target.value))} />}
-
-        <button style={{ background: 'none', border: 'none' }} onClick={() => setShowColorPalette(!showColorPalette)}><Paintbrush /></button>
-        {showColorPalette && (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4 }}>
-            {COLORS.map(c => (
-              <button
-                key={c}
-                onClick={() => setColor(c)}
-                style={{ backgroundColor: c, width: 20, height: 20, borderRadius: '50%', border: color === c ? '2px solid black' : 'none' }}
-              />
-            ))}
-          </div>
-        )}
-
-        <button style={{ background: 'none', border: 'none' }} onClick={handleClear}><Trash2 /></button>
-        <button style={{ background: 'none', border: 'none' }} onClick={() => setScale(prev => Math.min(prev + 0.1, 3))}><ZoomIn /></button>
-        <button style={{ background: 'none', border: 'none' }} onClick={() => setScale(prev => Math.max(prev - 0.1, 0.5))}><ZoomOut /></button>
-        <button style={{ background: 'none', border: 'none' }} onClick={toggleFullscreen}><Maximize2 /></button>
-        <button style={{ background: 'none', border: 'none' }} onClick={exportAsImage}><Save /></button>
+      <div style={toolbarStyle}>
+        <button style={toolBtnStyle} onClick={() => { setShowStrokeSlider(!showStrokeSlider); setShowColorPalette(false); }}><Pencil size={isMobile ? 22 : 24} /></button>
+        <button style={toolBtnStyle} onClick={() => { setShowColorPalette(!showColorPalette); setShowStrokeSlider(false); }}><Paintbrush size={isMobile ? 22 : 24} /></button>
+        <button style={toolBtnStyle} onClick={handleClear}><Trash2 size={isMobile ? 22 : 24} /></button>
+        <button style={toolBtnStyle} onClick={() => setScale(prev => Math.min(prev + 0.1, 3))}><ZoomIn size={isMobile ? 22 : 24} /></button>
+        <button style={toolBtnStyle} onClick={() => setScale(prev => Math.max(prev - 0.1, 0.5))}><ZoomOut size={isMobile ? 22 : 24} /></button>
+        {!isMobile && <button style={toolBtnStyle} onClick={toggleFullscreen}><Maximize2 size={24} /></button>}
+        <button style={toolBtnStyle} onClick={exportAsImage}><Save size={isMobile ? 22 : 24} /></button>
       </div>
 
-      {/* Top Right User Count */}
-      <div style={{ position: 'fixed', top: 10, right: 10, background: '#fff', padding: '5px 10px', borderRadius: 6, boxShadow: '0 0 5px rgba(0,0,0,0.1)' }}>
+      {showStrokeSlider && (
+        <div style={strokeSliderStyle}>
+          <input type="range" min="1" max="10" value={lineWidth} onChange={(e) => setLineWidth(Number(e.target.value))} style={{ width: isMobile ? 200 : 'auto' }} />
+        </div>
+      )}
+
+      {showColorPalette && (
+        <div style={colorPaletteStyle}>
+          {COLORS.map(c => (
+            <button
+              key={c}
+              onClick={() => { setColor(c); setShowColorPalette(false); }}
+              style={{
+                backgroundColor: c,
+                width: isMobile ? 36 : 20,
+                height: isMobile ? 36 : 20,
+                borderRadius: '50%',
+                border: color === c ? '3px solid #333' : '2px solid #ddd',
+                cursor: 'pointer',
+                minWidth: isMobile ? 44 : 'auto',
+                minHeight: isMobile ? 44 : 'auto',
+                display: 'flex', alignItems: 'center', justifyContent: 'center'
+              }}
+            />
+          ))}
+        </div>
+      )}
+
+      <div style={{
+        position: 'fixed', top: 10, right: 10,
+        background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
+        padding: '6px 14px', borderRadius: 20,
+        boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+        fontSize: 14, fontWeight: 600, zIndex: 100
+      }}>
         👥 {userCount}
       </div>
 
-      {/* Remote Cursors */}
       {Object.entries(cursors).map(([id, cursor]) => id !== myId && (
         <div
           key={id}
@@ -218,7 +313,8 @@ const Room = () => {
             top: cursor.y * scale + 5,
             color: userColors[id] || 'black',
             fontSize: 20,
-            pointerEvents: 'none'
+            pointerEvents: 'none',
+            zIndex: 50
           }}
         >
           <FaMousePointer />
